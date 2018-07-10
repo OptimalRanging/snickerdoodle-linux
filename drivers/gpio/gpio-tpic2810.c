@@ -17,7 +17,9 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 
-#define TPIC2810_WS_COMMAND 0x44
+#define TPIC2810_WS_COMMAND	0x44
+#define PROPERTY_NAME_INITIAL	"initial"
+#define PROPERTY_NAME_FINAL	"final"
 
 /**
  * struct tpic2810 - GPIO driver data
@@ -87,12 +89,21 @@ static void tpic2810_set_multiple(struct gpio_chip *chip, unsigned long *mask,
 	tpic2810_set_mask_bits(chip, *mask, *bits);
 }
 
+// 2018.07.06:NEB: Added _get function
+static int tpic2810_get(struct gpio_chip *chip, unsigned offset)
+{
+	struct tpic2810 *gpio = gpiochip_get_data(chip);
+	return (gpio->buffer & BIT(offset)) ? 1 : 0;
+}
+
 static const struct gpio_chip template_chip = {
 	.label			= "tpic2810",
 	.owner			= THIS_MODULE,
 	.get_direction		= tpic2810_get_direction,
 	.direction_input	= tpic2810_direction_input,
 	.direction_output	= tpic2810_direction_output,
+	// 2018.07.06:NEB: Added _get function
+	.get			= tpic2810_get,
 	.set			= tpic2810_set,
 	.set_multiple		= tpic2810_set_multiple,
 	.base			= -1,
@@ -110,6 +121,10 @@ static int tpic2810_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)
 {
 	struct tpic2810 *gpio;
+	// 2018.07.06:NEB: Added _get function
+	struct device_node *node = client->dev.of_node;
+	u32 value;
+
 	int ret;
 
 	gpio = devm_kzalloc(&client->dev, sizeof(*gpio), GFP_KERNEL);
@@ -131,12 +146,25 @@ static int tpic2810_probe(struct i2c_client *client,
 		return ret;
 	}
 
+	// 2018.07.06:NEB: Added _get function
+	ret = of_property_read_u32(node, PROPERTY_NAME_INITIAL, &value);
+	if ( ret == 0 )		// set initial value
+		tpic2810_set_mask_bits(&gpio->chip, 0xff, value);
+
 	return 0;
 }
 
 static int tpic2810_remove(struct i2c_client *client)
 {
 	struct tpic2810 *gpio = i2c_get_clientdata(client);
+	// 2018.07.06:NEB: Added _get function
+	struct device_node *node = client->dev.of_node;
+	u32 value;
+
+	// 2018.07.06:NEB: Added _get function
+	int ret = of_property_read_u32(node, PROPERTY_NAME_FINAL, &value);
+	if ( ret == 0 )		// set final value
+		tpic2810_set_mask_bits(&gpio->chip, 0xff, value);
 
 	gpiochip_remove(&gpio->chip);
 
